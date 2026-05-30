@@ -81,3 +81,35 @@ export function emptyFields(): ExtractedField[] {
     extractedAtMessageIndex: null,
   }));
 }
+
+// ── Campaign qualifying criteria ───────────────────────────────────────────
+
+/**
+ * One thing the intake agent qualifies a lead against. The five defaults map
+ * to the built-in FieldKeys; admins can add custom criteria per campaign.
+ */
+export type QualifyingCriterion = {
+  key: string;
+  label: string;
+  custom: boolean;
+};
+
+export type Campaign = {
+  id: string;
+  name: string;
+  criteria: QualifyingCriterion[];
+};
+
+/** The five built-in criteria every campaign starts with. */
+export const DEFAULT_CRITERIA: QualifyingCriterion[] = (
+  Object.keys(FIELD_LABELS) as FieldKey[]
+).map((key) => ({ key, label: FIELD_LABELS[key], custom: false }));
+
+export function makeCriterionKey(label: string): string {
+  const slug = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  return `c_${slug || "field"}_${Math.random().toString(36).slice(2, 6)}`;
+}

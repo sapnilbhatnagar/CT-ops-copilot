@@ -1,100 +1,90 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, CircleDashed } from "lucide-react";
-import type { ExtractedField, Classification } from "@/lib/types";
-import { ClassificationBadge } from "./classification-badge";
+import { Check, Circle, Sparkles } from "lucide-react";
+import type { ExtractedField, QualifyingCriterion } from "@/lib/types";
 
-function ConfidenceDot({ confidence }: { confidence: number | null }) {
-  if (confidence === null) return null;
-  const pct = Math.round(confidence * 100);
-  const tone =
-    confidence >= 0.85 ? "text-ok" : confidence >= 0.6 ? "text-warm" : "text-mute";
-  return (
-    <span className={`text-[11px] tabular-nums ${tone}`} title={`Confidence ${pct}%`}>
-      {pct}%
-    </span>
-  );
-}
-
-function FieldRow({ field }: { field: ExtractedField }) {
-  const extracted = field.value !== null;
+function CriterionRow({ id, label, value }: { id: string; label: string; value: string | null }) {
+  const present = value !== null && value !== "";
   return (
     <li
-      data-testid={`field-${field.key}`}
-      data-state={extracted ? "extracted" : "pending"}
-      className="flex items-start justify-between gap-4 py-3.5"
+      data-testid={`field-${id}`}
+      data-state={present ? "extracted" : "pending"}
+      className="flex items-start justify-between gap-3 py-3"
     >
-      <div className="flex items-start gap-3">
-        <span
-          aria-hidden
-          className={`mt-0.5 flex size-4 items-center justify-center rounded-full ${
-            extracted ? "text-ok" : "text-mute/60"
-          }`}
-        >
-          {extracted ? <Check className="size-3.5" /> : <CircleDashed className="size-3.5" />}
-        </span>
-        <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-mute">
-            {field.label}
-          </div>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={field.value ?? "empty"}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mt-0.5 text-[14.5px] leading-snug text-ink"
-            >
-              {field.value ?? <span className="text-mute/60">—</span>}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+      <div className="min-w-0">
+        <div className="text-[11px] uppercase tracking-[0.13em] text-mute">{label}</div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={value ?? "empty"}
+            initial={{ opacity: 0, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="mt-0.5 text-[14px] leading-snug text-ink"
+          >
+            {present ? value : <span className="text-mute/55">Awaiting</span>}
+          </motion.div>
+        </AnimatePresence>
       </div>
-      <ConfidenceDot confidence={field.confidence} />
+      <span
+        aria-hidden
+        className={
+          present
+            ? "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-ok text-white"
+            : "mt-0.5 flex size-5 shrink-0 items-center justify-center text-mute/40"
+        }
+      >
+        {present ? <Check className="size-3.5" /> : <Circle className="size-3.5" />}
+      </span>
     </li>
   );
 }
 
 export function ExtractionPanel({
+  criteria,
   fields,
-  classification,
-  classificationReason,
+  summary,
 }: {
+  criteria: QualifyingCriterion[];
   fields: ExtractedField[];
-  classification: Classification;
-  classificationReason?: string;
+  summary?: string;
 }) {
-  const completed = fields.filter((f) => f.value !== null).length;
+  const valueFor = (key: string) => fields.find((f) => f.key === key)?.value ?? null;
+  const captured = criteria.filter((c) => {
+    const v = valueFor(c.key);
+    return v !== null && v !== "";
+  }).length;
 
   return (
     <aside
       data-testid="extraction-panel"
-      className="flex h-full w-[340px] shrink-0 flex-col border-l border-rule bg-panel"
+      className="flex h-full w-[340px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-rule bg-panel p-4"
     >
-      <div className="border-b border-rule px-6 pt-6 pb-5">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-mute">
-          Live extraction
-        </div>
-        <div className="mt-1 flex items-baseline justify-between">
-          <div className="font-display text-[22px] leading-tight">
-            {completed} of {fields.length}
-          </div>
-          <ClassificationBadge value={classification} />
-        </div>
-        {classificationReason ? (
-          <p className="mt-3 text-[12.5px] leading-relaxed text-mute">
-            {classificationReason}
-          </p>
-        ) : null}
+      <div className="flex items-baseline justify-between px-1">
+        <span className="text-[11px] uppercase tracking-[0.16em] text-mute">Live extraction</span>
+        <span className="text-[12px] tabular-nums text-mute">
+          <span className="font-medium text-ink">{captured}</span> of {criteria.length}
+        </span>
       </div>
 
-      <ul className="flex-1 divide-y divide-rule px-6">
-        {fields.map((f) => (
-          <FieldRow key={f.key} field={f} />
-        ))}
-      </ul>
+      {summary ? (
+        <div data-testid="extraction-summary" className="tile-blue-soft p-3.5">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.13em] text-accent-ink">
+            <Sparkles className="size-3 text-accent" />
+            Summary
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-ink">{summary}</p>
+        </div>
+      ) : null}
+
+      <div className="tile flex-1 px-4 py-1">
+        <ul className="divide-y divide-rule">
+          {criteria.map((c) => (
+            <CriterionRow key={c.key} id={c.key} label={c.label} value={valueFor(c.key)} />
+          ))}
+        </ul>
+      </div>
     </aside>
   );
 }
