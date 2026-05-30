@@ -57,7 +57,7 @@ export function Sidebar() {
   return (
     <aside
       data-testid="console-sidebar"
-      className="flex h-dvh w-60 shrink-0 flex-col bg-sidebar-bg text-sidebar-fg"
+      className="glass-dark sticky top-0 flex h-dvh w-60 shrink-0 flex-col text-sidebar-fg"
     >
       <div className="px-5 pt-7 pb-9">
         <div className="font-display text-[18px] leading-tight tracking-tight">
@@ -81,13 +81,13 @@ export function Sidebar() {
                   href={item.href}
                   data-active={active}
                   className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-[13.5px] transition-colors",
+                    "flex items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] transition-colors",
                     active
-                      ? "bg-sidebar-active-bg text-sidebar-fg"
-                      : "text-sidebar-fg-mute hover:bg-sidebar-active-bg hover:text-sidebar-fg",
+                      ? "bg-white/12 text-sidebar-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
+                      : "text-sidebar-fg-mute hover:bg-white/[0.07] hover:text-sidebar-fg",
                   )}
                 >
-                  <Icon className="size-4 shrink-0" />
+                  <Icon className={cn("size-4 shrink-0", active ? "text-accent" : "")} />
                   <span>{item.label}</span>
                 </Link>
               </li>

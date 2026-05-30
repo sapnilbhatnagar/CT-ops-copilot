@@ -45,7 +45,7 @@ export function Dropdown({
         <div
           data-testid="dropdown-panel"
           className={cn(
-            "absolute z-30 mt-1.5 min-w-[180px] rounded-lg border border-rule bg-paper py-1 shadow-lg shadow-ink/5",
+            "glass absolute z-40 mt-1.5 min-w-[180px] rounded-xl py-1 shadow-[var(--shadow-float)]",
             align === "right" ? "right-0" : "left-0",
           )}
         >

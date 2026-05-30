@@ -29,7 +29,7 @@ export function CommunityView() {
           </p>
         </div>
 
-        <div role="tablist" className="mb-6 inline-flex gap-1 rounded-full border border-rule bg-panel p-0.5">
+        <div role="tablist" className="glass mb-6 inline-flex gap-1 rounded-full p-0.5">
           {TABS.map((t) => (
             <button
               key={t.id}

@@ -2,7 +2,8 @@
 
 Plain-English status for anyone joining the project. Updated after every PR merge.
 
-**Last updated:** 2026-05-30 (after PR #5)
+**Last updated:** 2026-05-30 (after PR #6)
+**Live demo:** pending first deploy — see [`DEPLOY.md`](./DEPLOY.md) (2-minute Vercel import).
 
 ---
 

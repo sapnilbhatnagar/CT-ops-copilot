@@ -79,7 +79,9 @@ export function TripsFlow() {
                 {error}
               </div>
             ) : null}
-            <TripForm onSubmit={handleTripSubmit} />
+            <div className="tile max-w-2xl p-6">
+              <TripForm onSubmit={handleTripSubmit} />
+            </div>
           </div>
         ) : null}
 
@@ -115,7 +117,7 @@ export function TripsFlow() {
         ) : null}
 
         {phase === "summary" && summary ? (
-          <div data-testid="broadcast-summary" className="mx-auto max-w-md py-20 text-center">
+          <div data-testid="broadcast-summary" className="tile mx-auto mt-10 max-w-md px-8 py-12 text-center">
             <CheckCircle2 className="mx-auto size-10 text-ok" />
             <div className="mt-4 font-display text-[24px] leading-tight text-ink">Broadcast sent</div>
             <p className="mt-2 text-[13px] text-mute">

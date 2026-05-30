@@ -49,7 +49,7 @@ export function LeadsDashboard() {
   return (
     <>
       <TopBar section="Leads" />
-      <div className="flex min-h-0 flex-1 flex-col bg-paper">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-baseline justify-between px-8 pt-6 pb-3">
           <h1 className="font-display text-[26px] leading-tight text-ink">Leads</h1>
           <div className="text-[12px] tabular-nums text-mute" data-testid="leads-count">
@@ -57,27 +57,31 @@ export function LeadsDashboard() {
           </div>
         </div>
 
-        <LeadsFilterBar
-          filter={filter}
-          onChange={setFilter}
-          destinations={destinations}
-          admins={admins}
-        />
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
-            <div data-testid="leads-loading" className="pt-4">
-              <SkeletonRows rows={8} />
-            </div>
-          ) : (
-            <LeadTable
-              leads={visible}
+        <div className="min-h-0 flex-1 px-8 pb-8">
+          <div className="tile flex h-full min-h-0 flex-col overflow-hidden">
+            <LeadsFilterBar
+              filter={filter}
+              onChange={setFilter}
+              destinations={destinations}
               admins={admins}
-              sort={sort}
-              onSort={handleSort}
-              onSelect={setSelectedId}
             />
-          )}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {loading ? (
+                <div data-testid="leads-loading" className="pt-4">
+                  <SkeletonRows rows={8} />
+                </div>
+              ) : (
+                <LeadTable
+                  leads={visible}
+                  admins={admins}
+                  sort={sort}
+                  onSort={handleSort}
+                  onSelect={setSelectedId}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
