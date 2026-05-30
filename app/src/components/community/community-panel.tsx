@@ -67,7 +67,7 @@ export function CommunityPanel({ members }: { members: CommunityMember[] }) {
                 {joined}/{g.members.length} joined
               </span>
             </div>
-            <div className="divide-y divide-rule overflow-hidden rounded-lg border border-rule bg-paper">
+            <div className="divide-y divide-rule overflow-hidden tile">
               {g.members.map((m) => (
                 <MemberRow key={m.id} member={m} />
               ))}

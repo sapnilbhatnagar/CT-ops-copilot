@@ -1,32 +1,40 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — 60% impeccable / 40% productsanctum blend.
- * Locked 2026-05-26. See Build Plan.md for the rationale per token.
+ * Connecting Traveller Ops — material design system.
+ * Warm, Apple-grade light interface: frosted "liquid glass" on chrome
+ * (sidebar, top bar, sheets, sticky bars), opaque tiles for content,
+ * a single terracotta accent. Glass is used on chrome only, never over
+ * dense data, so tables stay crisp.
  */
 :root {
   --ink: #0E1014;
   --ink-soft: #36383D;
   --paper: #FAFAF7;
-  --panel: #F2F0E9; /* second neutral layer: rails, side panels, table headers */
+  --canvas: #EFECE4; /* base behind glass, a touch deeper than paper */
+  --tile: #FCFBF9; /* content tile surface */
+  --panel: #F2F0E9; /* opaque second layer: intake rails */
   --mute: #6B6B6B;
-  --rule: #E8E6E0;
+  --rule: #E7E4DD;
   --accent: #C8553D;
-  --accent-quiet: #F4E3DD; /* terracotta wash for selected/active surfaces */
+  --accent-quiet: #F4E3DD;
   --warm: #E8A87C;
   --cool: #9DB4C0;
   --ok: #5A8F5A;
 
-  --sidebar-bg: var(--ink);
-  --sidebar-fg: #E6E4DE;
-  --sidebar-fg-mute: #8A8784;
-  --sidebar-active-bg: rgba(255, 255, 255, 0.06);
+  --sidebar-fg: #E8E6E0;
+  --sidebar-fg-mute: #8E8B86;
+
+  --shadow-tile: 0 1px 2px rgba(24, 20, 16, 0.04), 0 12px 28px -14px rgba(24, 20, 16, 0.18);
+  --shadow-float: 0 1px 2px rgba(24, 20, 16, 0.05), 0 24px 60px -20px rgba(24, 20, 16, 0.28);
 }
 
 @theme inline {
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-paper: var(--paper);
+  --color-canvas: var(--canvas);
+  --color-tile: var(--tile);
   --color-panel: var(--panel);
   --color-mute: var(--mute);
   --color-rule: var(--rule);
@@ -35,21 +43,31 @@
   --color-warm: var(--warm);
   --color-cool: var(--cool);
   --color-ok: var(--ok);
-  --color-sidebar-bg: var(--sidebar-bg);
   --color-sidebar-fg: var(--sidebar-fg);
   --color-sidebar-fg-mute: var(--sidebar-fg-mute);
-  --color-sidebar-active-bg: var(--sidebar-active-bg);
+
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
 
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-display: var(--font-fraunces), Georgia, serif;
 }
 
-html,
+html {
+  background: var(--canvas);
+}
+
+/* Soft warm ambient backdrop so the glass layers have something to refract. */
 body {
-  background: var(--paper);
+  min-height: 100dvh;
   color: var(--ink);
   font-family: var(--font-sans);
   font-feature-settings: "ss01", "cv11";
+  background:
+    radial-gradient(1200px 760px at 8% -10%, color-mix(in oklab, var(--accent) 13%, transparent), transparent 58%),
+    radial-gradient(1100px 820px at 108% 6%, color-mix(in oklab, var(--cool) 18%, transparent), transparent 55%),
+    var(--canvas);
+  background-attachment: fixed;
 }
 
 ::selection {
@@ -60,10 +78,45 @@ body {
 *:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
-/* Skeleton loading shimmer. Conveys "content is coming" without a spinner. */
+/* ── Materials ─────────────────────────────────────────────────────────── */
+
+/* Frosted chrome: top bars, sticky action bars, pills. Translucent. */
+.glass {
+  background: color-mix(in oklab, var(--paper) 58%, transparent);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid color-mix(in oklab, white 55%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 70%, transparent);
+}
+
+/* Stronger frost where content sits on top (sheets/drawers): keeps text crisp. */
+.glass-strong {
+  background: color-mix(in oklab, var(--paper) 86%, transparent);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow: var(--shadow-float), inset 0 1px 0 color-mix(in oklab, white 70%, transparent);
+}
+
+/* Dark vibrancy for the sidebar. */
+.glass-dark {
+  background: color-mix(in oklab, var(--ink) 76%, transparent);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Opaque content tile with soft, diffuse elevation. */
+.tile {
+  background: var(--tile);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-tile);
+}
+
+/* ── Skeleton loading ──────────────────────────────────────────────────── */
 @keyframes skeleton-pulse {
   0%,
   100% {

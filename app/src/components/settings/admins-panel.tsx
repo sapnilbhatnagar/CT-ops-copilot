@@ -44,7 +44,7 @@ export function AdminsPanel() {
             {loading ? "—" : `${admins.length} admin${admins.length === 1 ? "" : "s"}`}
           </div>
         </div>
-        <ul className="divide-y divide-rule rounded-lg border border-rule bg-paper">
+        <ul className="divide-y divide-rule tile">
           {loading ? (
             <li className="px-4 py-4 text-[12.5px] text-mute">Loading…</li>
           ) : admins.length === 0 ? (
@@ -81,7 +81,7 @@ export function AdminsPanel() {
         <form
           onSubmit={handleSubmit}
           noValidate
-          className="rounded-lg border border-rule bg-paper p-4"
+          className="tile p-4"
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block">

@@ -61,7 +61,7 @@ export function ReferralLeaderboard({ referrers }: { referrers: Referrer[] }) {
         <Trophy className="size-3.5 text-accent" />
         Ranked by friends referred, then by how many booked.
       </div>
-      <ol className="divide-y divide-rule overflow-hidden rounded-lg border border-rule bg-paper">
+      <ol className="divide-y divide-rule overflow-hidden tile">
         {ranked.map((r, i) => (
           <RankRow key={r.id} referrer={r} rank={i + 1} />
         ))}

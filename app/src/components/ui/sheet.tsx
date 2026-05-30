@@ -29,7 +29,7 @@ export function Sheet({
           data-testid="lead-detail-sheet"
           aria-label={label}
           className={cn(
-            "fixed inset-y-0 right-0 z-50 flex w-full max-w-[760px] flex-col bg-paper shadow-2xl outline-none",
+            "glass-strong fixed inset-y-0 right-0 z-50 flex w-full max-w-[760px] flex-col outline-none",
             "data-[state=open]:animate-in data-[state=open]:slide-in-from-right",
             className,
           )}

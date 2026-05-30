@@ -71,7 +71,7 @@ export function MatchPreview({
             <li
               key={m.id}
               data-testid={`match-card-${m.id}`}
-              className="rounded-lg border border-rule bg-paper p-4"
+              className="tile p-4"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[14px] font-medium text-ink">
@@ -89,7 +89,7 @@ export function MatchPreview({
       )}
 
       {matches.length > 0 ? (
-        <div className="sticky bottom-0 -mx-8 flex items-center justify-between gap-4 border-t border-rule bg-paper px-8 py-4">
+        <div className="glass sticky bottom-0 -mx-8 flex items-center justify-between gap-4 rounded-t-2xl border-x-0 border-b-0 border-t border-white/40 px-8 py-4">
           <div className="flex items-center gap-2 text-[11.5px] text-mute">
             {aiCount > 0 ? (
               <>
