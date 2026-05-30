@@ -11,10 +11,16 @@ const SETTINGS_LINKS = [
     status: "Live",
   },
   {
+    href: "/settings/criteria",
+    title: "Qualifying criteria",
+    description:
+      "Per-campaign parameters the agent qualifies leads against, shown in the Intake live extraction panel.",
+    status: "Live",
+  },
+  {
     href: "/settings/schema",
     title: "Schema designer",
-    description:
-      "The five qualifying fields the agent collects. Phase 5 will let you edit them here.",
+    description: "Field types and validation for the lead record. Phase 5 will let you edit them here.",
     status: "Phase 5",
   },
   {

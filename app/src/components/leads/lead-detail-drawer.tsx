@@ -5,8 +5,8 @@ import { ConversationThread } from "@/components/intake/conversation-thread";
 import { ClassificationControl } from "@/components/intake/classification-control";
 import { AssignmentControl } from "@/components/intake/assignment-control";
 import { ExtractionPanel } from "@/components/intake/extraction-panel";
-import { HotLeadAlert } from "@/components/intake/hot-lead-alert";
 import { LeadSummary } from "./lead-summary";
+import { useCampaigns } from "@/lib/hooks/use-campaigns";
 import type { Lead, Admin } from "@/lib/types";
 
 export function LeadDetailDrawer({
@@ -20,11 +20,11 @@ export function LeadDetailDrawer({
   onUpdate: (id: string, partial: Partial<Lead>) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { activeCampaign } = useCampaigns();
   return (
     <Sheet open={lead !== null} onOpenChange={onOpenChange} label="Lead detail">
       {lead ? (
         <div className="flex h-full min-h-0 flex-col">
-          <HotLeadAlert lead={lead} />
           <div className="flex items-start justify-between gap-4 border-b border-rule px-6 py-4 pr-14">
             <div className="min-w-0">
               <div className="font-display text-[20px] leading-tight text-ink">
@@ -61,11 +61,7 @@ export function LeadDetailDrawer({
                 </div>
               )}
             </div>
-            <ExtractionPanel
-              fields={lead.extractedFields}
-              classification={lead.classification}
-              classificationReason={lead.classificationReason}
-            />
+            <ExtractionPanel criteria={activeCampaign.criteria} fields={lead.extractedFields} />
           </div>
         </div>
       ) : null}

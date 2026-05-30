@@ -5,21 +5,23 @@ import { Play } from "lucide-react";
 import { TopBar } from "@/components/console-shell/topbar";
 import { useLeads } from "@/lib/hooks/use-leads";
 import { useAdmins } from "@/lib/hooks/use-admins";
+import { useCampaigns } from "@/lib/hooks/use-campaigns";
 import { LeadList } from "./lead-list";
 import { ConversationThread } from "./conversation-thread";
 import { ExtractionPanel } from "./extraction-panel";
-import { HotLeadAlert } from "./hot-lead-alert";
+import { MessageComposer } from "./message-composer";
 import { FilterBar, type AssigneeFilter } from "./filter-bar";
 import { Pagination } from "./pagination";
 import { ClassificationControl } from "./classification-control";
 import { AssignmentControl } from "./assignment-control";
-import type { Classification, Lead } from "@/lib/types";
+import type { Classification, Lead, Message } from "@/lib/types";
 
 const PAGE_SIZE = 10;
 
 export function IntakeConsole() {
   const { leads, loading: loadingLeads, updateLead, advanceConversation } = useLeads();
   const { admins } = useAdmins();
+  const { activeCampaign } = useCampaigns();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<Classification | "all">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -56,10 +58,25 @@ export function IntakeConsole() {
 
   const hasPending = Boolean(selectedLead?.pendingMessages?.length);
 
+  function handleSend(text: string) {
+    if (!selectedLead) return;
+    const msg: Message = {
+      id: `op_${Date.now()}`,
+      role: "agent",
+      content: text,
+      timestamp: new Date().toISOString(),
+      type: "text",
+    };
+    updateLead(selectedLead.id, {
+      messages: [...selectedLead.messages, msg],
+      lastActivityAt: msg.timestamp,
+    });
+  }
+
   return (
     <>
       <TopBar section="Intake" />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex h-[calc(100dvh-3.5rem)] min-h-0">
         <div className="flex h-[calc(100dvh-3.5rem)] w-[320px] shrink-0 flex-col border-r border-rule bg-panel">
           <div className="border-b border-rule">
             <div className="flex items-baseline justify-between px-4 pt-3 pb-1">
@@ -110,7 +127,6 @@ export function IntakeConsole() {
             </div>
           ) : (
             <>
-              <HotLeadAlert lead={selectedLead} />
               <div className="flex items-center justify-between border-b border-rule px-8 py-4">
                 <div className="min-w-0">
                   <div className="font-display text-[20px] leading-tight text-ink">
@@ -153,15 +169,16 @@ export function IntakeConsole() {
               <div className="flex min-h-0 flex-1 overflow-y-auto">
                 <ConversationThread messages={selectedLead.messages} />
               </div>
+              <MessageComposer onSend={handleSend} />
             </>
           )}
         </div>
 
         {selectedLead ? (
           <ExtractionPanel
+            criteria={activeCampaign.criteria}
             fields={selectedLead.extractedFields}
-            classification={selectedLead.classification}
-            classificationReason={selectedLead.classificationReason}
+            summary={selectedLead.classificationReason}
           />
         ) : null}
       </div>
