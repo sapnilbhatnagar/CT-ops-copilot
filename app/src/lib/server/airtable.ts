@@ -1,7 +1,7 @@
 import "server-only";
 import Airtable from "airtable";
 import { env } from "./env";
-import type { Lead, ExtractedField } from "@/lib/types";
+import type { Lead, Admin, ExtractedField } from "@/lib/types";
 
 let _base: Airtable.Base | null = null;
 
@@ -14,6 +14,10 @@ function base(): Airtable.Base {
 
 function leadsTable() {
   return base()(env.airtable.leadsTable());
+}
+
+function adminsTable() {
+  return base()(env.airtable.adminsTable());
 }
 
 /**
@@ -137,4 +141,59 @@ function safeParseJson<T>(raw: string | undefined): T | null {
   } catch {
     return null;
   }
+}
+
+// ── Admins ────────────────────────────────────────────────────────────────────
+
+const AF = {
+  name: "Name",
+  email: "Email",
+  initials: "Initials",
+  color: "Color",
+  active: "Active",
+} as const;
+
+function recordToAdmin(r: Airtable.Record<Airtable.FieldSet>): Admin {
+  return {
+    id: r.id,
+    name: (r.get(AF.name) as string) ?? "",
+    email: (r.get(AF.email) as string) ?? "",
+    initials: (r.get(AF.initials) as string) ?? "",
+    color: (r.get(AF.color) as string) ?? "#6B6B6B",
+    active: (r.get(AF.active) as boolean) ?? true,
+  };
+}
+
+export async function listAdmins(): Promise<Admin[]> {
+  const records = await adminsTable()
+    .select({ filterByFormula: `{${AF.active}} = 1` })
+    .all();
+  return records.map(recordToAdmin);
+}
+
+export async function createAdmin(
+  input: Pick<Admin, "name" | "email" | "initials" | "color">,
+): Promise<Admin> {
+  const record = await adminsTable().create({
+    [AF.name]: input.name,
+    [AF.email]: input.email,
+    [AF.initials]: input.initials,
+    [AF.color]: input.color,
+    [AF.active]: true,
+  });
+  return recordToAdmin(record);
+}
+
+export async function deactivateAdmin(recordId: string): Promise<void> {
+  await adminsTable().update(recordId, { [AF.active]: false });
+}
+
+export async function findAdminByEmail(email: string): Promise<Admin | null> {
+  const records = await adminsTable()
+    .select({
+      maxRecords: 1,
+      filterByFormula: `{${AF.email}} = '${email.replace(/'/g, "\\'")}'`,
+    })
+    .firstPage();
+  return records[0] ? recordToAdmin(records[0]) : null;
 }
