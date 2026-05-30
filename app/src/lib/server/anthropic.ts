@@ -1,0 +1,177 @@
+import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
+import { env } from "./env";
+import { startTurnTrace } from "./langfuse";
+import type {
+  Classification,
+  ExtractedField,
+  FieldKey,
+  Message,
+} from "@/lib/types";
+import { FIELD_LABELS, emptyFields } from "@/lib/types";
+
+let _client: Anthropic | null = null;
+
+function client(): Anthropic {
+  if (_client) return _client;
+  _client = new Anthropic({ apiKey: env.anthropic.apiKey() });
+  return _client;
+}
+
+const SYSTEM_PROMPT = `You are the intake agent for Connecting Traveller, a small-group travel company in India. You qualify inbound WhatsApp leads from Meta ads.
+
+Tone: warm, brief, professional, never robotic. Match the user's language (English, Hindi, or Hinglish). You are an AI, but do not announce that unless directly asked.
+
+Your job is to gather five qualifying fields in a natural conversation, not a form:
+1. name
+2. destination (where they want to travel)
+3. travel_dates (when, as specific as they will give)
+4. group_size (how many people)
+5. budget (per person or total, INR)
+
+Rules:
+- Ask at most one question per message. Never list multiple questions.
+- If the user volunteers information, acknowledge it and skip to the next gap.
+- If the user goes off-topic, answer briefly and steer back to the next missing field.
+- If the user sends a voice note or image, reply that you cannot process those yet and ask them to type.
+- Once all five fields are collected, send a short closing message confirming next steps.
+- If the conversation goes more than 10 turns without progress, close politely and mark the lead incomplete.
+
+Classification logic (you decide based on the five fields plus context):
+- hot: group_size >= 2, travel_dates within 60 days, budget at or above Rs 15,000/person (or Rs 30,000 total), urgency expressed
+- warm: any 3+ fields filled, intent clear, but timing or budget soft
+- cold: vague, browsing, no concrete intent
+- unclassified: not enough information to decide yet
+
+Output format: Always return STRICT JSON only (no prose around it) with this shape:
+
+{
+  "reply": "the message text to send back to the user via WhatsApp",
+  "extractedFields": {
+    "name": "string or null",
+    "destination": "string or null",
+    "travel_dates": "string or null",
+    "group_size": "string or null",
+    "budget": "string or null"
+  },
+  "classification": "hot" | "warm" | "cold" | "unclassified",
+  "classificationReason": "one sentence",
+  "complete": true | false
+}
+
+Set complete=true only when all five fields are filled AND you have sent a closing message.`;
+
+type IntakeAgentInput = {
+  sessionId: string;
+  history: Message[];
+  newUserMessage: string;
+  existingFields: ExtractedField[];
+};
+
+type IntakeAgentOutput = {
+  reply: string;
+  extractedFields: ExtractedField[];
+  classification: Classification;
+  classificationReason: string;
+  complete: boolean;
+};
+
+function mergeFields(
+  existing: ExtractedField[],
+  update: Partial<Record<FieldKey, string | null>>,
+  turnIndex: number,
+): ExtractedField[] {
+  return existing.map((f) => {
+    const newVal = update[f.key];
+    if (newVal === undefined || newVal === null || newVal === "") return f;
+    return {
+      ...f,
+      value: newVal,
+      confidence: 0.85,
+      extractedAtMessageIndex: turnIndex,
+    };
+  });
+}
+
+export async function runIntakeAgent(input: IntakeAgentInput): Promise<IntakeAgentOutput> {
+  const trace = startTurnTrace({
+    sessionId: input.sessionId,
+    name: "intake-turn",
+    metadata: {
+      turnIndex: input.history.length,
+      filledFields: input.existingFields.filter((f) => f.value !== null).length,
+    },
+  });
+
+  const generation = trace.generation({
+    name: "claude-intake",
+    model: env.anthropic.model(),
+    input: {
+      system: SYSTEM_PROMPT,
+      history: input.history.map((m) => ({ role: m.role, content: m.content })),
+      newUserMessage: input.newUserMessage,
+    },
+  });
+
+  const messages = [
+    ...input.history.map((m) => ({
+      role: m.role === "agent" ? ("assistant" as const) : ("user" as const),
+      content: m.content,
+    })),
+    { role: "user" as const, content: input.newUserMessage },
+  ];
+
+  const response = await client().messages.create({
+    model: env.anthropic.model(),
+    system: SYSTEM_PROMPT,
+    messages,
+    max_tokens: 800,
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+
+  let parsed: {
+    reply: string;
+    extractedFields: Partial<Record<FieldKey, string | null>>;
+    classification: Classification;
+    classificationReason: string;
+    complete: boolean;
+  };
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    generation.end({
+      output: text,
+      level: "ERROR",
+      statusMessage: "Claude did not return valid JSON",
+    });
+    throw new Error(`Intake agent returned non-JSON: ${text.slice(0, 200)}`);
+  }
+
+  const turnIndex = input.history.length + 1;
+  const baseFields =
+    input.existingFields.length === 5 ? input.existingFields : emptyFields();
+  const merged = mergeFields(baseFields, parsed.extractedFields, turnIndex);
+
+  generation.end({
+    output: parsed,
+    usage: {
+      input: response.usage.input_tokens,
+      output: response.usage.output_tokens,
+    },
+  });
+
+  return {
+    reply: parsed.reply,
+    extractedFields: merged,
+    classification: parsed.classification,
+    classificationReason: parsed.classificationReason,
+    complete: parsed.complete,
+  };
+}
+
+// Re-export so other modules can build labels without importing two places.
+export { FIELD_LABELS };
