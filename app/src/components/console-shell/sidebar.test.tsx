@@ -31,4 +31,10 @@ describe("Sidebar", () => {
     const leadsLink = screen.getByRole("link", { name: /Leads/i });
     expect(leadsLink).toHaveAttribute("data-active", "false");
   });
+
+  it("has Campaigns and no Community", () => {
+    render(<Sidebar />);
+    expect(screen.getByRole("link", { name: /Campaigns/i })).toHaveAttribute("href", "/campaigns");
+    expect(screen.queryByRole("link", { name: /Community/i })).not.toBeInTheDocument();
+  });
 });

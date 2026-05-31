@@ -2,7 +2,7 @@
 
 Plain-English status for anyone joining the project. Updated after every PR merge.
 
-**Last updated:** 2026-05-31 (after Campaigns C0)
+**Last updated:** 2026-05-31 (after Campaigns C1)
 **Live demo:** https://ct-ops-copilot.vercel.app (real Airtable + Claude; WhatsApp in sim mode).
 
 ---
@@ -19,19 +19,15 @@ A web console for Connecting Traveller (a travel business) that catches every Wh
 - **Qualifying criteria are configurable per campaign** from Settings, stored in Airtable, and **the AI intake agent actually extracts them** from new WhatsApp conversations (its prompt is built from the campaign's criteria). Add a custom parameter like "Occasion" and a new lead's occasion is captured automatically.
 - **Trips re-engagement** now runs on the real backend: enter a new trip and it matches every stored lead, and Claude writes a personalised WhatsApp message for each match (traced in Langfuse). The "send" goes through sim mode until the WhatsApp key arrives.
 
-## What's built and looks real, but runs on sample data
+## The Campaigns module (in progress)
 
-- **Community & referrals:** booked travellers grouped by trip with invite/welcome status, plus a referral leaderboard. Still on sample data.
-
-## Coming next: the Campaigns module
-
-We're reorganising the product around **campaigns** (for example "London Diwali 2026"). A campaign owns its trip details (destination, dates, price, itinerary, seats), the ads that bring leads in, its own qualifying questions, the enquiries it sources, and its re-engagement. This reframes today's "Trips" into "Campaigns" and folds "Community" in as each campaign's booked-traveller list. The first piece, the campaign data model and storage, has just landed (no screens yet); the console, automatic lead-to-campaign routing, and booking/seat tracking follow next.
+We're reorganising the product around **campaigns** (for example "London Diwali 2026"). A campaign owns its trip details (destination, dates, price, itinerary, seats), the ads that bring leads in, its own qualifying questions, the enquiries it sources, and its re-engagement. This reframes "Trips" into "Campaigns" and folds the old "Community" idea in as each campaign's booked-traveller list. **The Campaigns console is now live:** a campaign list plus a detail screen where you curate the trip (overview, day-by-day itinerary, seats) and set its qualifying questions. Automatic lead-to-campaign routing and booking/seat tracking come next.
 
 ## What's left
 
 1. **WhatsApp connection (AISensy):** we need the API key and a short check of their webhook format. Until then, sim mode covers both intake replies and trip broadcasts. (One open detail: real sending needs the lead's raw phone number, which we don't store yet for privacy; we'll resolve that with the AISensy wiring.)
 2. **Leads backend polish** (Phase 2b): richer Airtable wiring, conversation summaries.
-3. **Community backend** (Phase 4b): real traveller and referral data.
+3. **Campaigns module:** the console is live; next is automatic lead-to-campaign routing and booking/seat tracking (with the booked-traveller roster).
 4. **Go live:** deploy to Vercel.
 
 ## How we work

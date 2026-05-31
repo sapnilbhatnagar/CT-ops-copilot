@@ -796,6 +796,8 @@ Non-breaking checklist: `listCampaigns()` shape unchanged + `activeId` from `Act
 
 ## Phase C1 (detailed build spec, test-first) — Campaigns console (curation UI)
 
+**Status: SHIPPED 2026-05-31 (branch `feat/campaigns-c1-console`). 104 tests, build clean, routes verified.**
+
 Builds Overview/Curation + Itinerary + Criteria on the `/campaigns/[id]` shell, renames Trips to Campaigns, deletes Community. Assumes C0 shipped (full `Campaign`, `getCampaign`/`updateCampaign`, `PATCH /api/campaigns/[id]`); items needing that are flagged [C0-dep]. Planned via Plan agent + /tdd, 2026-05-31. No backend agent work (that is C2).
 
 ### Routes & components
