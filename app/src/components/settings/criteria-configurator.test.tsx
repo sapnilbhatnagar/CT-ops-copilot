@@ -1,32 +1,49 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CriteriaConfigurator } from "./criteria-configurator";
-
-beforeEach(() => {
-  window.localStorage.clear();
-});
+import { DEFAULT_CRITERIA } from "@/lib/types";
 
 describe("CriteriaConfigurator", () => {
   it("shows the five default criteria", () => {
-    render(<CriteriaConfigurator />);
+    render(
+      <CriteriaConfigurator
+        campaign={{ id: "c1", criteria: DEFAULT_CRITERIA }}
+        onAdd={() => {}}
+        onRemove={() => {}}
+      />,
+    );
     expect(screen.getByTestId("criterion-name")).toBeInTheDocument();
-    expect(screen.getByTestId("criterion-budget")).toBeInTheDocument();
     expect(screen.getAllByText("Default")).toHaveLength(5);
   });
 
-  it("adds and removes a custom parameter", async () => {
+  it("calls onAdd with the typed label", async () => {
+    const onAdd = vi.fn();
     const user = userEvent.setup();
-    render(<CriteriaConfigurator />);
-
+    render(
+      <CriteriaConfigurator
+        campaign={{ id: "c1", criteria: DEFAULT_CRITERIA }}
+        onAdd={onAdd}
+        onRemove={() => {}}
+      />,
+    );
     await user.type(screen.getByTestId("criterion-input"), "Occasion");
     await user.click(screen.getByTestId("add-criterion"));
+    expect(onAdd).toHaveBeenCalledWith("Occasion");
+  });
 
-    expect(screen.getByText("Occasion")).toBeInTheDocument();
-    expect(screen.getByText("Custom")).toBeInTheDocument();
-
-    const remove = screen.getByLabelText("Remove Occasion");
-    await user.click(remove);
-    expect(screen.queryByText("Occasion")).not.toBeInTheDocument();
+  it("calls onRemove for a custom criterion", async () => {
+    const onRemove = vi.fn();
+    const user = userEvent.setup();
+    const criteria = [...DEFAULT_CRITERIA, { key: "c_occasion_ab12", label: "Occasion", custom: true }];
+    render(
+      <CriteriaConfigurator
+        campaign={{ id: "c1", criteria }}
+        onAdd={() => {}}
+        onRemove={onRemove}
+      />,
+    );
+    await user.click(screen.getByLabelText("Remove Occasion"));
+    expect(onRemove).toHaveBeenCalledWith("c_occasion_ab12");
   });
 });

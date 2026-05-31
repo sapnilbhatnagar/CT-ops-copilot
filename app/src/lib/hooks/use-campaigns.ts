@@ -92,68 +92,89 @@ async function fetchServer(): Promise<CampaignsState | null> {
   }
 }
 
-function activeCriteria(state: CampaignsState) {
-  return state.campaigns.find((c) => c.id === state.activeId)?.criteria ?? [];
-}
-
 export function useCampaigns() {
   const [state, setState] = useState<CampaignsState>(load);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const onChange = (s: CampaignsState) => setState(s);
     _subs.add(onChange);
     setState(load());
     // Hydrate from the server (Airtable); keep local state if it's unreachable.
-    fetchServer().then((s) => {
-      if (s) commit(s);
-    });
+    fetchServer()
+      .then((s) => {
+        if (s) commit(s);
+      })
+      .finally(() => setLoading(false));
     return () => {
       _subs.delete(onChange);
     };
   }, []);
 
+  // Back-compat for the intake + leads views until C2 routes criteria per lead.
   const activeCampaign = state.campaigns.find((c) => c.id === state.activeId) ?? state.campaigns[0];
 
-  const setActive = useCallback((id: string) => {
-    commit({ ..._state!, activeId: id });
-    fetch("/api/campaigns", {
+  const getCampaign = useCallback((id: string) => _state!.campaigns.find((c) => c.id === id), []);
+
+  const create = useCallback(async (name: string): Promise<string> => {
+    const { campaigns, id } = addCampaign(_state!.campaigns, name);
+    commit({ ..._state!, campaigns });
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        const created = (await res.json()) as { id?: string };
+        const server = await fetchServer();
+        if (server) commit(server);
+        return created.id ?? id;
+      }
+    } catch {
+      /* offline: keep the optimistic campaign */
+    }
+    return id;
+  }, []);
+
+  const updateCampaign = useCallback((id: string, partial: Partial<Campaign>) => {
+    commit({
+      ..._state!,
+      campaigns: _state!.campaigns.map((c) => (c.id === id ? { ...c, ...partial } : c)),
+    });
+    fetch(`/api/campaigns/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, setActive: true }),
+      body: JSON.stringify(partial),
     }).catch(() => {});
   }, []);
 
-  const create = useCallback((name: string) => {
-    const { campaigns } = addCampaign(_state!.campaigns, name);
+  const patchCriteria = (id: string, campaigns: Campaign[]) => {
     commit({ ..._state!, campaigns });
-    fetch("/api/campaigns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    })
-      .then(() => fetchServer())
-      .then((s) => {
-        if (s) commit(s);
-      })
-      .catch(() => {});
-  }, []);
-
-  const persistCriteria = (next: CampaignsState) => {
-    commit(next);
+    const criteria = campaigns.find((c) => c.id === id)?.criteria ?? [];
     fetch("/api/campaigns", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: next.activeId, criteria: activeCriteria(next) }),
+      body: JSON.stringify({ id, criteria }),
     }).catch(() => {});
   };
 
-  const addParam = useCallback((label: string) => {
-    persistCriteria({ ..._state!, campaigns: addCriterion(_state!.campaigns, _state!.activeId, label) });
+  const addParam = useCallback((id: string, label: string) => {
+    patchCriteria(id, addCriterion(_state!.campaigns, id, label));
   }, []);
 
-  const removeParam = useCallback((key: string) => {
-    persistCriteria({ ..._state!, campaigns: removeCriterion(_state!.campaigns, _state!.activeId, key) });
+  const removeParam = useCallback((id: string, key: string) => {
+    patchCriteria(id, removeCriterion(_state!.campaigns, id, key));
   }, []);
 
-  return { campaigns: state.campaigns, activeCampaign, setActive, create, addParam, removeParam };
+  return {
+    campaigns: state.campaigns,
+    loading,
+    activeCampaign,
+    getCampaign,
+    create,
+    updateCampaign,
+    addParam,
+    removeParam,
+  };
 }

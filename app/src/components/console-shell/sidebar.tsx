@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  MessagesSquare,
-  Users,
-  Map,
-  Sparkles,
-  Settings,
-} from "lucide-react";
+import { MessagesSquare, Users, Map, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type NavItem = {
@@ -32,16 +26,10 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Every lead across every campaign, filterable and pipelined.",
   },
   {
-    label: "Trips",
-    href: "/trips",
+    label: "Campaigns",
+    href: "/campaigns",
     icon: Map,
-    description: "Compose a new trip and re-engage matched leads.",
-  },
-  {
-    label: "Community",
-    href: "/community",
-    icon: Sparkles,
-    description: "Booked travellers, welcomes, and the referral leaderboard.",
+    description: "Curate each trip, source and qualify its leads, and re-engage.",
   },
   {
     label: "Settings",
