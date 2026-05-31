@@ -3,7 +3,7 @@ import type { Lead } from "@/lib/types";
 const base = new Date("2026-05-26T14:00:00+05:30").getTime();
 const t = (offsetMinutes: number) => new Date(base + offsetMinutes * 60_000).toISOString();
 
-export const MOCK_LEADS: Lead[] = [
+const RAW_LEADS: Omit<Lead, "campaignId" | "bookingStatus">[] = [
   {
     id: "lead_priya_rajasthan",
     contactName: "Priya Sharma",
@@ -676,3 +676,10 @@ export const MOCK_LEADS: Lead[] = [
     ],
   },
 ];
+
+// C0: every lead carries a campaign link (null until routed) and a booking status.
+export const MOCK_LEADS: Lead[] = RAW_LEADS.map((l) => ({
+  ...l,
+  campaignId: null,
+  bookingStatus: "enquiry",
+}));

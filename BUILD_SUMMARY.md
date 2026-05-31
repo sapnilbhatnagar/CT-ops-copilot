@@ -2,7 +2,7 @@
 
 Plain-English status for anyone joining the project. Updated after every PR merge.
 
-**Last updated:** 2026-05-30 (after PR #13)
+**Last updated:** 2026-05-31 (after Campaigns C0)
 **Live demo:** https://ct-ops-copilot.vercel.app (real Airtable + Claude; WhatsApp in sim mode).
 
 ---
@@ -22,6 +22,10 @@ A web console for Connecting Traveller (a travel business) that catches every Wh
 ## What's built and looks real, but runs on sample data
 
 - **Community & referrals:** booked travellers grouped by trip with invite/welcome status, plus a referral leaderboard. Still on sample data.
+
+## Coming next: the Campaigns module
+
+We're reorganising the product around **campaigns** (for example "London Diwali 2026"). A campaign owns its trip details (destination, dates, price, itinerary, seats), the ads that bring leads in, its own qualifying questions, the enquiries it sources, and its re-engagement. This reframes today's "Trips" into "Campaigns" and folds "Community" in as each campaign's booked-traveller list. The first piece, the campaign data model and storage, has just landed (no screens yet); the console, automatic lead-to-campaign routing, and booking/seat tracking follow next.
 
 ## What's left
 
