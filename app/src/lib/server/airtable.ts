@@ -45,7 +45,12 @@ const F = {
   agentNotifiedAt: "Agent notified at",
   messagesJson: "Messages (JSON)",
   fieldsJson: "Fields (JSON)",
+  campaign: "Campaign",
+  bookingStatus: "Booking status",
 } as const;
+
+/** Minimal shape of an Airtable record, so the record parsers are unit-testable. */
+export type RecordLike = { id: string; get(field: string): unknown };
 
 function fieldByKey(fields: ExtractedField[], key: ExtractedField["key"]): string | null {
   return fields.find((f) => f.key === key)?.value ?? null;
@@ -73,6 +78,8 @@ export async function createLead(lead: Lead): Promise<string> {
     ...(lead.agentNotifiedAt ? { [F.agentNotifiedAt]: lead.agentNotifiedAt } : {}),
     [F.messagesJson]: JSON.stringify(lead.messages),
     [F.fieldsJson]: JSON.stringify(lead.extractedFields),
+    ...(lead.campaignId ? { [F.campaign]: [lead.campaignId] } : {}),
+    [F.bookingStatus]: lead.bookingStatus,
   });
   return record.id;
 }
@@ -87,6 +94,9 @@ export async function updateLead(recordId: string, partial: Partial<Lead>): Prom
   // Linked-record field: pass an array (empty array clears the assignment).
   if (partial.assignedToId !== undefined)
     fields[F.assignedTo] = partial.assignedToId ? [partial.assignedToId] : [];
+  if (partial.campaignId !== undefined)
+    fields[F.campaign] = partial.campaignId ? [partial.campaignId] : [];
+  if (partial.bookingStatus !== undefined) fields[F.bookingStatus] = partial.bookingStatus;
   if (partial.status !== undefined) fields[F.status] = partial.status;
   if (partial.lastActivityAt !== undefined) fields[F.lastActivityAt] = partial.lastActivityAt;
   if (partial.agentNotifiedAt !== undefined) fields[F.agentNotifiedAt] = partial.agentNotifiedAt;
@@ -114,42 +124,40 @@ export async function findLeadIdByPhoneHash(phoneHash: string): Promise<string |
   return records[0]?.id ?? null;
 }
 
+export function recordToLead(r: RecordLike): Lead {
+  const messages = safeParseJson<Lead["messages"]>(r.get(F.messagesJson) as string) ?? [];
+  const extractedFields =
+    safeParseJson<Lead["extractedFields"]>(r.get(F.fieldsJson) as string) ?? [];
+  const assignedLinks = r.get(F.assignedTo) as string[] | undefined;
+  const campaignLinks = r.get(F.campaign) as string[] | undefined;
+  return {
+    id: (r.get(F.phoneHash) as string) ?? r.id,
+    contactName: ((r.get(F.contactName) as string) ?? null) || null,
+    phoneMasked: (r.get(F.phoneMasked) as string) ?? "",
+    language: ((r.get(F.language) as string) ?? "en") as Lead["language"],
+    source: ((r.get(F.source) as string) ?? "meta_ad") as Lead["source"],
+    status: ((r.get(F.status) as string) ?? "in_progress") as Lead["status"],
+    classification: ((r.get(F.classification) as string) ?? "unclassified") as Lead["classification"],
+    classificationSource: ((r.get(F.classificationSource) as string) ?? "model") as Lead["classificationSource"],
+    classificationReason: (r.get(F.classificationReason) as string) || undefined,
+    assignedToId: Array.isArray(assignedLinks) && assignedLinks.length > 0 ? assignedLinks[0] : null,
+    campaignId: Array.isArray(campaignLinks) && campaignLinks.length > 0 ? campaignLinks[0] : null,
+    bookingStatus: ((r.get(F.bookingStatus) as string) ?? "enquiry") as Lead["bookingStatus"],
+    extractedFields,
+    messages,
+    startedAt: (r.get(F.startedAt) as string) ?? "",
+    lastActivityAt: (r.get(F.lastActivityAt) as string) ?? "",
+    agentNotifiedAt: (r.get(F.agentNotifiedAt) as string) || undefined,
+  };
+}
+
 export async function listLeads(): Promise<Lead[]> {
   const records = await leadsTable()
     .select({ sort: [{ field: F.lastActivityAt, direction: "desc" }] })
     .all();
-
-  return records
-    // Skip blank placeholder rows (a fresh Airtable base ships with a few).
-    // A real lead always has a Phone hash.
-    .filter((r) => !!(r.get(F.phoneHash) as string))
-    .map((r) => {
-      const messages = safeParseJson<Lead["messages"]>(r.get(F.messagesJson) as string) ?? [];
-      const extractedFields =
-        safeParseJson<Lead["extractedFields"]>(r.get(F.fieldsJson) as string) ?? [];
-      const assignedLinks = r.get(F.assignedTo) as string[] | undefined;
-      return {
-        id: (r.get(F.phoneHash) as string) ?? r.id,
-        contactName: ((r.get(F.contactName) as string) ?? null) || null,
-        phoneMasked: (r.get(F.phoneMasked) as string) ?? "",
-        language: ((r.get(F.language) as string) ?? "en") as Lead["language"],
-        source: ((r.get(F.source) as string) ?? "meta_ad") as Lead["source"],
-        status: ((r.get(F.status) as string) ?? "in_progress") as Lead["status"],
-        classification: ((r.get(F.classification) as string) ??
-          "unclassified") as Lead["classification"],
-        classificationSource: ((r.get(F.classificationSource) as string) ??
-          "model") as Lead["classificationSource"],
-        classificationReason: (r.get(F.classificationReason) as string) || undefined,
-        assignedToId: Array.isArray(assignedLinks) && assignedLinks.length > 0
-          ? assignedLinks[0]
-          : null,
-        extractedFields,
-        messages,
-        startedAt: (r.get(F.startedAt) as string) ?? "",
-        lastActivityAt: (r.get(F.lastActivityAt) as string) ?? "",
-        agentNotifiedAt: (r.get(F.agentNotifiedAt) as string) || undefined,
-      };
-    });
+  // Skip blank placeholder rows (a fresh Airtable base ships with a few).
+  // A real lead always has a Phone hash.
+  return records.filter((r) => !!(r.get(F.phoneHash) as string)).map(recordToLead);
 }
 
 function safeParseJson<T>(raw: string | undefined): T | null {
@@ -222,19 +230,44 @@ const CF = {
   name: "Name",
   criteriaJson: "Criteria (JSON)",
   active: "Active",
+  status: "Status",
+  destination: "Destination",
+  matchKeywordsJson: "Match keywords (JSON)",
+  startDate: "Start date",
+  endDate: "End date",
+  pricePerPerson: "Price per person",
+  seatsTotal: "Seats total",
+  seatsBooked: "Seats booked",
+  itineraryJson: "Itinerary (JSON)",
+  inclusionsJson: "Inclusions (JSON)",
+  exclusionsJson: "Exclusions (JSON)",
+  leaderId: "Leader",
 } as const;
 
 function campaignsTable() {
   return base()("Campaigns");
 }
 
-function recordToCampaign(r: Airtable.Record<Airtable.FieldSet>): Campaign {
-  const criteria =
-    safeParseJson<QualifyingCriterion[]>(r.get(CF.criteriaJson) as string) ?? [...DEFAULT_CRITERIA];
+export function recordToCampaign(r: RecordLike): Campaign {
+  const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
   return {
     id: r.id,
     name: (r.get(CF.name) as string) ?? "Untitled campaign",
-    criteria,
+    criteria:
+      safeParseJson<QualifyingCriterion[]>(r.get(CF.criteriaJson) as string) ?? [...DEFAULT_CRITERIA],
+    status: ((r.get(CF.status) as string) ?? "draft") as Campaign["status"],
+    destination: (r.get(CF.destination) as string) ?? "",
+    matchKeywords: safeParseJson<string[]>(r.get(CF.matchKeywordsJson) as string) ?? [],
+    startDate: str(r.get(CF.startDate)),
+    endDate: str(r.get(CF.endDate)),
+    pricePerPerson: num(r.get(CF.pricePerPerson)),
+    seatsTotal: num(r.get(CF.seatsTotal)),
+    seatsBooked: num(r.get(CF.seatsBooked)) ?? 0,
+    itinerary: safeParseJson<Campaign["itinerary"]>(r.get(CF.itineraryJson) as string) ?? [],
+    inclusions: safeParseJson<string[]>(r.get(CF.inclusionsJson) as string) ?? [],
+    exclusions: safeParseJson<string[]>(r.get(CF.exclusionsJson) as string) ?? [],
+    leaderId: str(r.get(CF.leaderId)),
   };
 }
 
@@ -290,4 +323,45 @@ export async function setActiveCampaign(recordId: string): Promise<void> {
       .map((r) => campaignsTable().update(r.id, { [CF.active]: false })),
   );
   await campaignsTable().update(recordId, { [CF.active]: true });
+}
+
+export async function getCampaign(id: string): Promise<Campaign | null> {
+  try {
+    const record = await campaignsTable().find(id);
+    return recordToCampaign(record);
+  } catch {
+    return null;
+  }
+}
+
+export async function updateCampaign(id: string, partial: Partial<Campaign>): Promise<void> {
+  const fields: Record<string, unknown> = {};
+  if (partial.name !== undefined) fields[CF.name] = partial.name;
+  if (partial.criteria !== undefined) fields[CF.criteriaJson] = JSON.stringify(partial.criteria);
+  if (partial.status !== undefined) fields[CF.status] = partial.status;
+  if (partial.destination !== undefined) fields[CF.destination] = partial.destination;
+  if (partial.matchKeywords !== undefined)
+    fields[CF.matchKeywordsJson] = JSON.stringify(partial.matchKeywords);
+  if (partial.startDate !== undefined) fields[CF.startDate] = partial.startDate;
+  if (partial.endDate !== undefined) fields[CF.endDate] = partial.endDate;
+  if (partial.pricePerPerson !== undefined) fields[CF.pricePerPerson] = partial.pricePerPerson;
+  if (partial.seatsTotal !== undefined) fields[CF.seatsTotal] = partial.seatsTotal;
+  if (partial.seatsBooked !== undefined) fields[CF.seatsBooked] = partial.seatsBooked;
+  if (partial.itinerary !== undefined) fields[CF.itineraryJson] = JSON.stringify(partial.itinerary);
+  if (partial.inclusions !== undefined) fields[CF.inclusionsJson] = JSON.stringify(partial.inclusions);
+  if (partial.exclusions !== undefined) fields[CF.exclusionsJson] = JSON.stringify(partial.exclusions);
+  if (partial.leaderId !== undefined) fields[CF.leaderId] = partial.leaderId;
+  await campaignsTable().update(id, fields as Airtable.FieldSet);
+}
+
+export async function liveCampaigns(): Promise<Campaign[]> {
+  if (!env.airtable.baseId()) return [];
+  try {
+    const records = await campaignsTable()
+      .select({ filterByFormula: `{${CF.status}} = 'live'` })
+      .all();
+    return records.map(recordToCampaign);
+  } catch {
+    return [];
+  }
 }

@@ -36,6 +36,8 @@ export type LeadLanguage = "en" | "hi" | "hinglish";
 
 export type ClassificationSource = "model" | "user";
 
+export type BookingStatus = "enquiry" | "booked" | "travelled";
+
 export type Admin = {
   id: string;
   name: string;
@@ -56,6 +58,8 @@ export type Lead = {
   classificationSource: ClassificationSource;
   classificationReason?: string;
   assignedToId: string | null;
+  campaignId: string | null;
+  bookingStatus: BookingStatus;
   extractedFields: ExtractedField[];
   messages: Message[];
   startedAt: string;
@@ -96,11 +100,48 @@ export type QualifyingCriterion = {
   custom: boolean;
 };
 
+export type CampaignStatus = "draft" | "live" | "closed";
+
+export type ItineraryDay = { day: number; title: string; detail: string };
+
 export type Campaign = {
   id: string;
   name: string;
   criteria: QualifyingCriterion[];
+  status: CampaignStatus;
+  destination: string;
+  matchKeywords: string[];
+  startDate: string | null;
+  endDate: string | null;
+  pricePerPerson: number | null;
+  seatsTotal: number | null;
+  seatsBooked: number;
+  itinerary: ItineraryDay[];
+  inclusions: string[];
+  exclusions: string[];
+  leaderId: string | null;
 };
+
+/** A blank campaign with sensible defaults. Pure; callers override `id`. */
+export function emptyCampaign(name: string): Campaign {
+  return {
+    id: "",
+    name,
+    criteria: [...DEFAULT_CRITERIA],
+    status: "draft",
+    destination: "",
+    matchKeywords: [],
+    startDate: null,
+    endDate: null,
+    pricePerPerson: null,
+    seatsTotal: null,
+    seatsBooked: 0,
+    itinerary: [],
+    inclusions: [],
+    exclusions: [],
+    leaderId: null,
+  };
+}
 
 /** The five built-in criteria every campaign starts with. */
 export const DEFAULT_CRITERIA: QualifyingCriterion[] = (

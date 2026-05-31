@@ -6,11 +6,11 @@ import {
   setActiveCampaign,
 } from "@/lib/server/airtable";
 import { env } from "@/lib/server/env";
-import { DEFAULT_CRITERIA, type QualifyingCriterion } from "@/lib/types";
+import { emptyCampaign, type QualifyingCriterion } from "@/lib/types";
 
 function seed() {
   return {
-    campaigns: [{ id: "campaign_default", name: "Default campaign", criteria: DEFAULT_CRITERIA }],
+    campaigns: [{ ...emptyCampaign("Default campaign"), id: "campaign_default" }],
     activeId: "campaign_default",
   };
 }

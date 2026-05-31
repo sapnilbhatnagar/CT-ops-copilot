@@ -600,3 +600,395 @@ Every backend concern in the original plan (AISensy capability audit, Zoho Bigin
 | 7 | Vercel + production hardening | 2-3 days | 31-43 days |
 
 **Total estimated build time:** 31-43 business days from Phase 0 start. ~10 days faster than the backend-first plan because visual sign-off on each module prevents downstream rework.
+
+---
+
+## Module C: Campaigns (reframe of Trips + Community) — added 2026-05-31
+
+### Why this section exists
+
+The original plan modeled "Trips" as a re-engagement blaster and "Community" as a referral/alumni view. Sapnil reframed the product so the **campaign** is the central operating unit. "Trips" becomes "Campaigns"; the referral leaderboard is dropped; "Community" collapses into a campaign's booked-traveller roster.
+
+A campaign is a single marketing-plus-travel operation (example: "London Diwali 2026"). It owns:
+- **Curation:** destination, pricing, dates, structured itinerary, seat inventory
+- **Sourcing:** the Instagram ads/boosts that drive inbound WhatsApp leads
+- **Qualification:** its own qualifying criteria (already per-campaign as of PR #13)
+- **Enquiries:** the leads it sourced, owned by a campaign leader
+- **Engagement:** responding to and re-engaging those leads
+
+At any time 2+ campaigns run concurrently, so every inbound must be categorized and routed to the right campaign, then qualified on that campaign's criteria, so the right leader works the right people.
+
+### Decisions locked (2026-05-31)
+
+1. **Lead routing = AI inference + clarify-on-ambiguity.** The intake agent infers the campaign from the conversation. If the lead is ambiguous (e.g., "Interested") and more than one campaign is live, the agent replies asking which campaign/destination they mean and lists the live options. If exactly one campaign is live, route to it automatically. No Meta ad-ID plumbing in v1 (revisit Click-to-WhatsApp `referral.source_id` auto-routing when the AISensy webhook format is audited).
+2. **Intake criteria = per campaign, defaults until routed.** A lead is qualified on its routed campaign's criteria; before routing (first replies) it uses the five defaults. This supersedes the single global "active campaign" introduced in PR #13.
+3. **Community = folded into campaigns.** Track booked travellers and which campaign they booked, inside the campaign. Remove the referral leaderboard and the standalone Community section.
+4. **Campaign v1 scope = structured itinerary + inventory.** Day-by-day itinerary blocks, seats total/booked, structured inclusions/exclusions.
+
+### Campaign entity (expand the Airtable `Campaigns` table)
+
+Current columns: `Name`, `Criteria (JSON)`, `Active`. Add:
+
+| Column | Type | Notes |
+|---|---|---|
+| `Status` | single select: `draft` / `live` / `closed` | Replaces the `Active` flag. `live` = taking leads. |
+| `Destination` | text | e.g. "London". Drives AI routing + re-engagement copy. |
+| `Match keywords (JSON)` | long text | string[] of aliases the agent routes on (e.g. ["london","uk","england"]). |
+| `Start date` / `End date` | date | trip dates |
+| `Price per person` | number (INR) | |
+| `Seats total` / `Seats booked` | number | inventory |
+| `Itinerary (JSON)` | long text | `[{ day, title, detail }]` |
+| `Inclusions (JSON)` / `Exclusions (JSON)` | long text | string[] |
+| `Leader` | link to `Admins` | campaign owner; its leads default-assign here |
+| `Criteria (JSON)` | long text (exists) | qualifying criteria for this campaign |
+
+Migration: `Status=live` replaces `Active`; `getActiveCampaignCriteria()` is retired in favor of per-lead campaign resolution (see agent rework). Auto-provision the new columns via the Airtable Metadata API (the token has schema-write scope, confirmed PR #13).
+
+### Lead changes
+
+- Add `campaignId: string | null` (link to `Campaigns`; null until routed).
+- Add `bookingStatus: 'enquiry' | 'booked' | 'travelled'` (default `enquiry`). Marking `booked` increments the campaign's `Seats booked` and powers the booked-traveller roster.
+- The global Leads dashboard gains a Campaign column + filter; leads stay cross-campaign there.
+
+### Console structure
+
+- Sidebar: rename **Trips -> Campaigns**; remove **Community**.
+- `/campaigns` (list): one tile per campaign showing name, destination, dates, status pill, live lead count + heat breakdown, seats booked/total, leader avatar. "New campaign" action.
+- `/campaigns/[id]` (detail), sectioned:
+  - **Overview / Curation:** destination, dates, price, seats, status. Editable.
+  - **Itinerary:** day-by-day blocks + inclusions/exclusions. Editable.
+  - **Enquiries:** this campaign's leads (reuse the leads table/cards filtered by `campaignId`), leader assignment, booking-status control (enquiry -> booked -> travelled).
+  - **Criteria:** the existing `CriteriaConfigurator` scoped to this campaign (moved out of Settings).
+  - **Re-engagement:** match + broadcast to this campaign's leads using the campaign's own itinerary/price/dates.
+- Settings -> Qualifying criteria: replaced by a pointer/redirect to Campaigns (criteria now live on the campaign). Settings -> Admins stays.
+
+### Intake agent rework (Agent 1) — routing + per-campaign criteria
+
+New per-inbound flow in `intake-handler.ts`:
+1. Resolve the lead by phone hash and read its `campaignId`.
+2. Load live campaigns (`Status = live`).
+3. Route:
+   - If `lead.campaignId` is set, use it.
+   - Else if exactly one campaign is live, set `campaignId` to it.
+   - Else (0 or >1 live), pass the live-campaign list into the agent and let it decide (infer, or ask the lead to choose).
+4. Criteria = routed campaign's criteria, else the five defaults.
+5. Run the agent with those criteria and the live-campaign context.
+6. Persist `campaignId` when the agent resolves it.
+
+Agent contract additions:
+- **Input:** `liveCampaigns: { key, name, destination }[]`.
+- **Output:** `campaign: string | null` (the routed campaign key, or null if unknown / the agent asked the lead to choose).
+- **System prompt block:** "Live campaigns: [list]. Determine which campaign the lead is asking about from their messages. If you cannot tell and more than one campaign is live, ask them which destination/campaign they mean and list the options, and set campaign=null. If only one campaign is live, use it. Put the routed campaign key in `campaign`."
+
+Document this in `AI_AGENTS.md` Changelog when shipped.
+
+### Re-engagement (absorbs the old Trips blaster)
+
+`matchLeadsToTrip` / `generateMessage` / `personalizeReengagement` are retained but fed by the campaign record instead of an ad-hoc trip form. "Re-engage" on a campaign matches its enquiries (and optionally other leads), Claude drafts messages referencing this campaign's real itinerary/price/dates, then broadcasts (AISensy sim until the key arrives). `/api/trips/match` + `/api/trips/broadcast` move under `/api/campaigns/[id]/...`.
+
+### Booked travellers (folded Community)
+
+A campaign's booked travellers = its leads with `bookingStatus in (booked, travelled)`, surfaced in the Enquiries section (or a Travellers sub-view). This replaces the standalone Community page. The referral leaderboard is removed entirely.
+
+### Files to remove / transform
+
+- **Remove:** `components/community/*` (community-panel, community-view + test, referral-leaderboard), `lib/community-view.ts` + test, `lib/mock/community.ts`, `app/(console)/community/page.tsx`, the sidebar Community item.
+- **Transform (rename, keep logic):** `components/trips/*` -> `components/campaigns/*`; `lib/trip-matching.ts` -> `lib/campaign-matching.ts` (Trip type derived from Campaign); `app/(console)/trips/*` -> `app/(console)/campaigns/*`; `app/api/trips/*` -> `app/api/campaigns/[id]/*`.
+- **Keep:** `lib/mock/leads.ts`, `lib/mock/admins.ts` (still wired as live fallbacks in the API routes).
+
+### Build phases (each ships as branch -> PR -> merge)
+
+- **C0 — Campaign data model + storage (backend).** Expand the Airtable Campaigns table + `Campaign` type + CRUD; add `campaignId` + `bookingStatus` to `Lead`; expand `/api/campaigns` to full CRUD. No UI yet.
+- **C1 — Campaigns console (curation UI).** Sidebar Trips->Campaigns, remove Community + files; `/campaigns` list and `/campaigns/[id]` detail (Overview, Itinerary editor); move `CriteriaConfigurator` into the campaign detail.
+- **C2 — Lead routing + per-campaign intake (agent).** Intake-handler routing (single->auto, multi->infer/ask), per-campaign criteria, `campaign` output field; Enquiries tab + Campaign column on Leads; update `AI_AGENTS.md`.
+- **C3 — Campaign engagement + booked travellers.** Re-engagement scoped to the campaign; booking-status control + seat-inventory; booked-traveller roster.
+
+### Open items / dependencies
+
+- CTWA auto-routing (Meta ad-ID via `referral.source_id`) deferred to the AISensy webhook audit; AI inference covers v1.
+- Real broadcast still needs the lead's raw phone (we store hash + masked only), unresolved since PR #5; decide when wiring AISensy.
+- `bookingStatus` is the seed of a future booking/payments layer (deferred; not in v1).
+
+---
+
+## Phase C0 (detailed build spec, test-first)
+
+**Status: SHIPPED 2026-05-31 (branch `feat/campaigns-c0-data-model`). 96 tests, build clean, verified live against Airtable.**
+
+Additive and non-breaking: expands `Campaign`/`Lead`, provisions Airtable columns, adds `/api/campaigns/[id]`. No UI. The existing 88 tests and the criteria configurator keep working. Planned via the Plan agent + /tdd on 2026-05-31.
+
+**Next.js note:** this repo runs a modified Next.js (`app/AGENTS.md`). Before writing the `[id]` route, read `node_modules/next/dist/docs/`. Dynamic `params` is a Promise and must be awaited.
+
+### Public interfaces
+
+`app/src/lib/types.ts` (edit):
+```ts
+export type CampaignStatus = "draft" | "live" | "closed";
+export type BookingStatus = "enquiry" | "booked" | "travelled";
+export type ItineraryDay = { day: number; title: string; detail: string };
+
+export type Campaign = {
+  id: string;
+  name: string;
+  criteria: QualifyingCriterion[];   // unchanged
+  status: CampaignStatus;
+  destination: string;
+  matchKeywords: string[];
+  startDate: string | null;
+  endDate: string | null;
+  pricePerPerson: number | null;
+  seatsTotal: number | null;
+  seatsBooked: number;               // default 0; increment deferred to C3
+  itinerary: ItineraryDay[];
+  inclusions: string[];
+  exclusions: string[];
+  leaderId: string | null;           // Admin record id, stored as text in C0
+};
+// Lead gains: campaignId: string | null;  bookingStatus: BookingStatus;
+
+export function emptyCampaign(name: string): Campaign; // pure; status "draft", criteria DEFAULT_CRITERIA, seatsBooked 0, arrays [], nullables null
+```
+
+`app/src/lib/server/airtable.ts` (edit): export + expand `recordToCampaign(r)` (parse all new fields, JSON-safe, defaulted); extract + export `recordToLead(r)`; add `getCampaign(id)`, `updateCampaign(id, Partial<Campaign>)`, `liveCampaigns()` (status === "live"); extend `createLead`/`updateLead` for `campaignId` (linked array) + `bookingStatus`. Keep `listCampaigns()` returning `{campaigns, activeId}` (activeId still from `Active`), `createCampaign`, `updateCampaignCriteria`, `setActiveCampaign`, `getActiveCampaignCriteria` unchanged in shape.
+
+`app/src/app/api/campaigns/[id]/route.ts` (create): `GET` -> 200 Campaign | 404 | 503; `PATCH` body `Partial<Campaign>` -> `{ok:true}` | 404 | 400 | 503. Signature `{ params }: { params: Promise<{ id: string }> }`, `const { id } = await params` first. The collection route `/api/campaigns/route.ts` stays untouched.
+
+### Airtable schema migration (one-time, Metadata API, out of band)
+
+`POST /v0/meta/bases/appM9rCnr2Zg29dwn/tables/{tableId}/fields`, one call per field (token has schema-write scope). Not app runtime code.
+
+Campaigns table `tblb41mhtozYI5j1a`, add: `Status` (singleSelect draft/live/closed), `Destination` (singleLineText), `Match keywords (JSON)` (multilineText), `Start date`/`End date` (date, iso), `Price per person`/`Seats total`/`Seats booked` (number, precision 0), `Itinerary (JSON)`/`Inclusions (JSON)`/`Exclusions (JSON)` (multilineText), `Leader` (singleLineText, holds Admin id). Keep `Active` (see risks). JSON-in-text matches the existing `Criteria (JSON)`/`Fields (JSON)` convention.
+
+Leads table, add: `Campaign` (multipleRecordLinks -> Campaigns, single link, read/write as array like `Assigned to`), `Booking status` (singleSelect enquiry/booked/travelled).
+
+### TDD vertical slices (one test -> one impl; tracer bullet first)
+
+All pure-logic Vitest, co-located. The suite has no server/route tests; keep it that way by pushing logic into exported pure helpers and feeding `recordTo*` a fake record stub `{ id, get: (k) => map[k] }` (no vi.mock, no network).
+
+| # | Behavior (via public interface) | Minimal impl |
+|---|---|---|
+| 1 (tracer) | `emptyCampaign("X")` returns all C0 defaults | add types + `emptyCampaign` |
+| 2 | `recordToCampaign` parses a fully-populated fake record | export + map every field, `safeParseJson` arrays |
+| 3 | `recordToCampaign` defaults on a legacy record (only `Name`, like seeded `rec7VQpQjCkNP6WA2`) | `?? "draft"` / `?? []` / `?? null` / `seatsBooked ?? 0` |
+| 4 | `recordToCampaign` survives malformed JSON | `safeParseJson` -> null -> typed default |
+| 5 | JSON round-trip itinerary/inclusions/exclusions/matchKeywords | write-side stringify matches read-side parse |
+| 6 | `recordToLead` parses `campaignId` (linked array) + `bookingStatus` (select) | `arr?.[0] ?? null`; `... ?? "enquiry"` |
+| 7 | `recordToLead` defaults: no link -> null, no status -> "enquiry" | fallbacks; guards legacy Lead rows |
+| 8 | Lead literals typecheck with the two new required fields | add defaults at every construction site (mocks, createLead) |
+
+Route tests skipped at C0 (thin glue: await params, env guard, call getCampaign/updateCampaign; testing needs vi.mock + Next request plumbing the repo never set up). Manual curl smoke instead. `getCampaign`/`updateCampaign`/`liveCampaigns` get no unit test (pure I/O wrappers; field mapping is covered by the cycle-5 round-trip). Keep them trivial.
+
+### Files
+
+Create: `[id]/route.ts`; `types.test.ts` (cycles 1, 5); `airtable.test.ts` (cycles 2-4, 6-7). Edit: `types.ts`, `airtable.ts`, any Lead-literal fixtures (cycle 8).
+
+Non-breaking checklist: `listCampaigns()` shape unchanged + `activeId` from `Active` (Active NOT removed); `recordToCampaign` returning a superset does not break `use-campaigns.ts`/`criteria-configurator.tsx` (they read only id/name/criteria); `/api/campaigns` route + client hook calls untouched; Lead additions are required-with-defaults at every construction site; `emptyFields()`/`fieldsFromCriteria()` unchanged; full suite 88 green + new pure tests green; `tsc --noEmit` clean.
+
+### Risks / decisions
+
+- Leader stored as text (Admin id) in C0; migrate to a linked-record if leader UX needs it in C3.
+- `Campaign` on a Lead is a real linked-record: read/write as an array exactly like `Assigned to` (the one fiddly mapping; cycles 6-7 pin it).
+- Keep `Active` alongside `status`: the criteria UI + `activeId` depend on `Active`; `status` is the new lifecycle axis. Orthogonal in C0; C1 reconciles them. Note the redundancy so C1 cleans it up.
+- `seatsBooked` stored only (default 0); increment/decrement logic deferred to C3. `liveCampaigns()` added now, first used by C2 routing.
+- Every JSON column read goes through `safeParseJson` with a typed default (cycle 4 locks it).
+
+---
+
+## Phase C1 (detailed build spec, test-first) — Campaigns console (curation UI)
+
+Builds Overview/Curation + Itinerary + Criteria on the `/campaigns/[id]` shell, renames Trips to Campaigns, deletes Community. Assumes C0 shipped (full `Campaign`, `getCampaign`/`updateCampaign`, `PATCH /api/campaigns/[id]`); items needing that are flagged [C0-dep]. Planned via Plan agent + /tdd, 2026-05-31. No backend agent work (that is C2).
+
+### Routes & components
+
+```
+app/src/app/(console)/
+  campaigns/page.tsx                 NEW  thin -> <CampaignsList/>
+  campaigns/[id]/page.tsx            NEW  async; const {id}=await params -> <CampaignDetail id={id}/>
+  trips/page.tsx                     DELETE (route renamed to /campaigns; trips/* components stay until C3)
+  community/page.tsx                 DELETE
+  settings/page.tsx                  EDIT drop "Qualifying criteria" link
+  settings/criteria/page.tsx         EDIT -> redirect("/campaigns")
+app/src/components/campaigns/        NEW: campaigns-list, campaign-tile, new-campaign-button,
+                                     campaign-detail, campaign-overview-form, itinerary-editor,
+                                     string-list-editor, section-placeholder
+app/src/components/settings/criteria-configurator.tsx  REFACTOR to controlled props
+app/src/components/console-shell/sidebar.tsx           EDIT Trips->Campaigns, remove Community
+app/src/lib/campaigns-view.ts        NEW pure view-models + validation
+app/src/lib/itinerary-editor.ts      NEW pure reducer
+app/src/lib/hooks/use-campaigns.ts   REFACTOR to full-CRUD
+app/src/components/community/*, lib/community-view.ts(+test), lib/mock/community.ts   DELETE
+```
+
+Reused as-is: `TopBar`, `useLeads`, `useAdmins`, `SkeletonRows`, `fieldValue`. Untouched: all `intake/*`, `leads/*`, `/api/leads*`, `/api/admins*`.
+
+### Public interfaces
+
+`useCampaigns` (keep the existing pure reducers `seedState`/`addCriterion`/`removeCriterion`/`addCampaign`; generalize the store from "active campaign" to any campaign):
+```ts
+useCampaigns(): {
+  campaigns: Campaign[]; loading: boolean;
+  getCampaign(id): Campaign | undefined;
+  create(name): Promise<string>;                    // resolves to new id for navigation
+  updateCampaign(id, partial: Partial<Campaign>): void;  // optimistic + PATCH /api/campaigns/[id]
+  addParam(id, label): void;  removeParam(id, key): void; // now id-scoped (were active-scoped)
+  // removed from public surface: activeCampaign, setActive
+}
+```
+`CriteriaConfigurator` becomes controlled: `{ campaign: Pick<Campaign,"id"|"criteria">; onAdd(label); onRemove(key) }` (internal campaign-selector removed; keeps all `data-testid`s so the behavior test survives).
+`campaigns-view.ts` (pure, no React): `campaignTileVM(campaign, leads, admins)` and `campaignTiles(...)` (sort live -> draft -> closed) producing `{id,name,destination,dateRange,status,heat:{hot,warm,cold,total},seatsLabel,seatsFraction,leaderName}`; `formatDateRange(start,end)`; `validateCampaignDraft(draft, seatsBooked): CampaignFormErrors` (name required; end>=start; price>=0; seatsTotal>=seatsBooked); `canGoLive(c): {ok,missing[]}` (destination + both dates + >=1 itinerary day).
+`itinerary-editor.ts` (pure): `addDay/removeDay/moveDay/editDay/renumber` (day = i+1, array is source of truth) + `addItem/removeItem` for inclusions/exclusions string lists.
+
+### UI/UX (product register, Apple-light / systemBlue)
+
+- List `/campaigns`: a single-column stack of wide horizontal `.tile` rows (NOT a decorative card grid), each a scannable manifest line: name (`font-display`) + status pill; mute line destination / date range / leader; right cluster heat chips (semantic hot/warm/cold, 0 faint) + a thin seats-fill bar (`--panel` track, `--accent` fill at `seatsFraction`, label "8 / 12"). Whole tile clicks through. Blue only on hover/active + seats-fill.
+- Status pill: draft = neutral, live = `.tile-blue-soft`, closed = desaturated.
+- Detail `/campaigns/[id]`: stacked sections (not tabs) with a scroll-spy section nav (Overview / Itinerary / Criteria / Enquiries / Re-engagement / Booked); Enquiries/Re-engagement/Booked render inert `section-placeholder` ("Coming in C2/C3"). Overview = two-column field grid, single systemBlue Save enabled when dirty+valid, inline errors, a quiet "Ready to go live" cue from `canGoLive`. Itinerary = auto-numbered day cards (title + detail, move up/down + remove) and an Add-day ghost button, then Inclusions/Exclusions string-list editors; saves coalesce on Save/blur (no PATCH-per-keystroke). New campaign = inline name field in the header (no modal). Empty/loading/unknown-id all quiet panels, never a thrown error.
+
+### TDD vertical slices (test -> impl, tracer first)
+
+| # | Behavior | Impl |
+|---|---|---|
+| 0 tracer | `sidebar` has Campaigns(`/campaigns`), no Community | edit sidebar |
+| 1 | `campaignTileVM` heat/seats/leader/dateRange; `campaignTiles` ordering | `campaigns-view.ts` |
+| 2 | `validateCampaignDraft` + `canGoLive` rules | same |
+| 3 | itinerary reducer add/remove/move/edit + string list add(trim/dedupe)/remove | `itinerary-editor.ts` |
+| 4 | `useCampaigns.updateCampaign(id,{...})` optimistic + PATCHes `/api/campaigns/[id]`; `addParam(id)` targets by id; `create` resolves id (stub fetch) | hook |
+| 5 | `CriteriaConfigurator` controlled: 5 defaults shown; add calls `onAdd`; remove calls `onRemove` | refactor + rewrite its test |
+| 6 | `CampaignsList`: one tile per campaign; New-campaign -> `create` + router.push; empty state | component |
+| 7 | `CampaignOverviewForm`: edit + Save calls update with edited fields; invalid blocks Save | component |
+| 8 | `ItineraryEditor`: add appends row; remove/move; Save calls `updateCampaign(id,{itinerary,inclusions,exclusions})` | component |
+| 9 | community removal regression (delete tests with code; suite green) | deletions |
+
+Not tested: exact Tailwind/pill palette, scroll-spy, locale exactness, the kept trips blaster.
+
+### Files
+
+Create: the 8 `components/campaigns/*` + 2 pages + `campaigns-view.ts` + `itinerary-editor.ts` + their tests. Edit: `sidebar.tsx`(+test), `use-campaigns.ts`(+test), `criteria-configurator.tsx`(+test), `settings/page.tsx`, `settings/criteria/page.tsx`. Delete (exhaustive): `app/(console)/community/page.tsx`, `components/community/{community-view(+test),community-panel,referral-leaderboard}.tsx`, `lib/community-view.ts(+test)`, `lib/mock/community.ts`, `app/(console)/trips/page.tsx`. Do NOT touch `LeadSource="referral"` / `mock/leads.ts` (unrelated).
+
+### Non-breaking + risks
+
+Non-breaking: reducer tests untouched; criteria add/remove still PATCH `/api/campaigns` `{id,criteria}` (server already supports it) so Airtable + intake panel unaffected; `/intake`+`/leads` untouched; grep-confirmed only the sidebar referenced Community; `[id]/page.tsx` awaits `params`. Risks: (R1) stacked sections chosen over tabs (curation is co-dependent); (R2) CriteriaConfigurator refactor rewrites its test in-slice, keeps testids; (R3) stop surfacing `activeId`, treat `status` as truth (a console can have many `live`), flag for C2 to delete `activeId`/`setActiveCampaign`; (R4) "live" gating = `canGoLive`; (R6) [C0-dep] confirm `PATCH /api/campaigns/[id]` + `updateCampaign` serialize itinerary/lists (JSON columns) before slices 7/8.
+
+---
+
+## Phase C2 (detailed build spec, test-first) — Lead routing + per-campaign intake
+
+Routing is a PURE function (every branch unit-tested); the handler/agent are thin orchestrators. Supersedes the single-active model. [C0-dep] needs `liveCampaigns()`, `Campaign.{status,destination}`, `Lead.campaignId`. Planned via Plan agent + /tdd, 2026-05-31.
+
+### Public interfaces
+
+New pure module `app/src/lib/server/lead-routing.ts` (no I/O, no `server-only`):
+```ts
+type RoutableCampaign = { key: string; name: string; destination: string }; // key == campaign id
+type RoutingDecision = { campaignId: string | null; awaitingChoice: boolean;
+                         source: "existing"|"single"|"agent"|"none" };
+resolveCampaign(currentCampaignId, live, agentChoiceKey?): RoutingDecision;
+needsAgentRouting(currentCampaignId, live): boolean;   // true only when multi-live + unrouted
+isLiveKey(key, live): boolean;                          // rejects hallucinated keys
+criteriaForLead(campaignId, campaignsById): QualifyingCriterion[]; // routed crit else DEFAULT_CRITERIA
+```
+`anthropic.ts`: `runIntakeAgent` input gains `liveCampaigns:{key,name,destination}[]`; output gains `campaign: string|null` (parse `parsed.campaign ?? null`); `buildSystemPrompt(criteria, liveCampaigns)` appends a Routing block ONLY when `liveCampaigns.length>1` (lists `key — name (destination)`, instructs infer-or-ask, set `campaign=null` when asking) and adds `"campaign"` to the JSON shape. STRICT JSON preserved.
+`airtable.ts`: `F.campaign="Campaign"` linked-record array (like `Assigned to`): `updateLead` writes `partial.campaignId ? [id] : []`; `listLeads` reads `links[0] ?? null`; `setLeadCampaign(recordId, campaignId)`. Deprecate `getActiveCampaignCriteria` (remove its handler caller).
+`sessions.ts`: `ConversationSession` gains `campaignId: string | null`.
+Manual reassignment reuses the existing lead PATCH (`PATCH /api/leads/[id]` body gains `campaignId`), no new endpoint.
+
+### Routing decision table (drives the tests)
+
+| current | live | agentKey | -> campaignId | awaiting | source |
+|---|---|---|---|---|---|
+| set | any | any | current | false | existing |
+| null | 1 | undefined | live[0] | false | single (auto, before agent) |
+| null | 0 | any | null | false | none (defaults) |
+| null | >=2 | valid key | that key | false | agent |
+| null | >=2 | null/undefined | null | true | agent (asked) |
+| null | >=2 | hallucinated | null | true | agent (isLiveKey rejects) |
+
+### Conversation behavior
+
+0 live: no routing block, qualify on defaults, never mention campaigns. 1 live: handler auto-routes BEFORE the agent; normal qualify, no "which trip". >1 live + clear: agent returns the key, qualifies on that campaign's criteria. >1 live + ambiguous ("Interested"): agent sets `campaign=null` and `reply` asks the lead to pick, listing live options; lead stays unrouted. Next inbound: the AGENT maps the free-text choice ("the himalayan one", Hinglish) to a key using full history; the pure function only validates it (`isLiveKey`). Mid-conversation campaign flip: the PR #13 reseed (`existingFields.every(f=>criteriaKeys.has(f.key)) ? existing : fieldsFromCriteria(criteria)`) already rebuilds fields on key mismatch. "Awaiting choice" is derived (`campaignId===null && live>=2`), not stored.
+
+### Handler flow (orchestration only)
+
+```
+live = await liveCampaigns(); routable = live.map(id->{key,name,destination}); byId = Map(live)
+campaignId = session.campaignId ?? null
+pre = resolveCampaign(campaignId, routable, undefined); campaignId = pre.campaignId   // existing/single/none
+criteria = criteriaForLead(campaignId, byId)                                          // reseed fields on key change
+agent = runIntakeAgent({..., criteria, liveCampaigns: needsAgentRouting(campaignId,routable)?routable:[] })
+post = resolveCampaign(campaignId, routable, agent.campaign); campaignId = post.campaignId
+// persist campaignId on create/update; save session.campaignId
+```
+
+### TDD vertical slices
+
+| Slice | Test | Impl |
+|---|---|---|
+| T0 tracer | `resolveCampaign` single-live auto | row "single" |
+| T1 | existing / 0-live rows | those branches |
+| T2 | multi + key / null / undefined | multi branch |
+| T3 | hallucinated key rejected | `isLiveKey` |
+| T4 | `needsAgentRouting` truth table | impl |
+| T5 | `criteriaForLead` routed vs defaults | impl |
+| T6 | `buildSystemPrompt(crit, multi)` has routing block + keys; single/`[]` omits it; JSON shape has `campaign` (assert on string, no network) | prompt |
+| T7 | RTL Leads: Campaign column renders name; filter narrows by campaignId | column + filter |
+| T8 opt | RTL reassign control PATCHes campaignId | drawer control |
+
+No server/Airtable integration tests (repo has none): keep handler/agent thin, verify by build + `/api/dev/simulate-message`. Back-compat parse `campaign ?? null`.
+
+### Files
+
+Create: `lib/server/lead-routing.ts`(+test). Edit: `intake-handler.ts` (liveCampaigns + resolve flow), `anthropic.ts` (I/O + routing block), `airtable.ts` (`F.campaign`, setLeadCampaign, deprecate getActiveCampaignCriteria), `sessions.ts` (campaignId), `leads-view.ts` (campaignId filter + `campaignOptions`), `lead-table.tsx` + `leads-dashboard.tsx` + filter bar (Campaign column/filter), `lead-detail-drawer.tsx` (reassign), `api/leads/[id]/route.ts` (accept campaignId), campaign-detail Enquiries section (reuse LeadTable filtered by campaignId), `AI_AGENTS.md` (Agent 1 + Changelog).
+
+### Non-breaking + risks
+
+Non-breaking: 88 tests green (routing additive); single-campaign case identical to PR #13 (`liveCampaigns:[]`, no routing block); PR #13 criteria storage + dynamic prompt intact (only WHICH criteria changes + appended block); `/leads` still shows all leads with no filter; `liveCampaigns()->[]` when Airtable unset -> defaults. Risks: AI ambiguity reliability (mitigated by prompt rule + `isLiveKey`, monitor in Langfuse); agent owns free-text choice mapping, pure fn only validates; key == campaign id (no separate slug); `matchKeywords` available but not used for deterministic routing in v1 (AI inference is the locked path).
+
+---
+
+## Phase C3 (detailed build spec, test-first) — Campaign engagement + booked travellers
+
+Re-engagement becomes campaign-driven (trip data from the Campaign record, not a form); booking status drives seat inventory; booked travellers replace the deleted Community. [C0-dep] needs `Campaign.{destination,startDate,endDate,pricePerPerson,seatsTotal,seatsBooked,inclusions}`, `updateCampaign`, `Lead.{campaignId,bookingStatus}`. Self-planned (C3 agent hit a session limit), consistent with C0-C2 + the existing `trip-matching.ts`/`reengagement.ts`.
+
+### Public interfaces
+
+`lib/campaign-matching.ts` (rename of `trip-matching.ts`; keep the tested pure logic): `matchLeadsToCampaign(leads, campaign): MatchedLead[]` (destination-token OR budget-fit >=80% vs `pricePerPerson`, hot-first; internally may build a Trip-shaped view from the campaign), `generateMessage(lead, campaign)` (references campaign destination/dates/price/first inclusion), `classificationBreakdown`, `ReengagementMatch` type unchanged. Core audience = this campaign's un-booked enquiries (`campaignId===id && bookingStatus==='enquiry'`); the destination/budget matcher ranks + can suggest additional unrouted leads.
+`lib/booking.ts` (PURE seat math): `countsAsSeat(s: BookingStatus): boolean` (booked||travelled); `seatDelta(from, to): -1|0|1` = `(countsAsSeat(to)?1:0) - (countsAsSeat(from)?1:0)`; `applyBooking(seatsBooked, seatsTotal, from, to): number` = clamp(seatsBooked + seatDelta, 0, seatsTotal ?? Infinity). Service `setBooking(leadId, campaign, from, to)`: `updateLead(leadId,{bookingStatus:to})` + `updateCampaign(campaign.id,{seatsBooked: applyBooking(...)})`.
+`reengagement.ts`: `buildMatches(campaign)` and `personalizeReengagement(lead, campaign)` (was trip-based). `runBroadcast` unchanged (aisensy sim).
+Routes (await `params`): `POST /api/campaigns/[id]/match` -> `buildMatches(getCampaign(id))`; `POST /api/campaigns/[id]/broadcast` -> `runBroadcast`. Old `/api/trips/match|broadcast` deleted.
+
+### Seat-inventory decision table (drives tests)
+
+| from -> to | seatDelta | note |
+|---|---|---|
+| enquiry -> booked | +1 | clamp <= seatsTotal |
+| booked -> travelled | 0 | already counted |
+| booked -> enquiry (cancel) | -1 | clamp >= 0 |
+| travelled -> enquiry | -1 | |
+| enquiry -> travelled | +1 | |
+| same -> same | 0 | no-op |
+
+### UI/UX (product register)
+
+Campaign detail Re-engagement section reuses the existing trips-flow UX (match preview -> confirm -> broadcast -> summary) but campaign-driven: no form, audience + draft messages come from the campaign; the existing `match-preview` renders matched leads + per-lead Claude message. Booking control = a small segmented control (enquiry / booked / travelled) per enquiry row (blue = selected state); changing it optimistically updates and calls `setBooking`. Booked travellers = a filter/segment within Enquiries (or its own panel) listing `bookingStatus in (booked,travelled)`, with a seats booked/total indicator reusing the list-tile seats-fill. No referral leaderboard.
+
+### TDD vertical slices
+
+| # | Behavior | Impl |
+|---|---|---|
+| 0 tracer | `seatDelta(enquiry,booked)===1`, `(booked,travelled)===0` | `booking.ts` |
+| 1 | `applyBooking` clamps at seatsTotal and at 0; null seatsTotal no upper clamp | same |
+| 2 | full from x to delta table | same |
+| 3 | `matchLeadsToCampaign(leads, campaign)` destination/budget match, hot-first (adapt `trip-matching.test.ts`) | rename+refactor |
+| 4 | `generateMessage(lead, campaign)` includes destination + formatted dates + price | refactor |
+| 5 | RTL booking control: changing status calls `setBooking`/optimistic update | component |
+| 6 | RTL booked-travellers list renders only booked/travelled + seats indicator | component |
+
+Not tested: broadcast/aisensy I/O, Claude personalization output (sim/template fallback already covered).
+
+### Files
+
+Rename: `lib/trip-matching.ts`(+test) -> `lib/campaign-matching.ts`(+test); fold `components/trips/*` into `components/campaigns/re-engagement*` (or reuse within campaign-detail). Create: `lib/booking.ts`(+test), `api/campaigns/[id]/match/route.ts`, `api/campaigns/[id]/broadcast/route.ts`, booking-control + booked-travellers components (+tests). Edit: `reengagement.ts` (campaign-based), `anthropic.ts` `personalizeReengagement(lead,campaign)`, `airtable.ts` (`updateCampaign` seatsBooked already from C0), campaign-detail (Re-engagement + Booked sections replacing C1 placeholders). Delete: `api/trips/match/route.ts`, `api/trips/broadcast/route.ts`. Keep `mock/leads.ts`/`mock/admins.ts`.
+
+### Non-breaking + risks
+
+Non-breaking: 88 tests green (note `trip-matching.test.ts` renamed/adapted, not dropped); intake/leads/curation untouched; aisensy sim path preserved; routes await `params`. Risks: raw-phone-for-real-send still open (PR #5) -> sim only; re-engagement audience defaults to this campaign's un-booked enquiries (wider destination/budget matches are suggested, not auto-included); broadcast idempotency not handled in v1 (sim tolerant; revisit with AISensy); booked-travellers as a segment within Enquiries vs its own section is a minor UI call (segment chosen); seat counts can drift if Airtable hand-edited (seatsBooked is derived-on-write, not recomputed) -> acceptable v1, a recompute helper can be added later.

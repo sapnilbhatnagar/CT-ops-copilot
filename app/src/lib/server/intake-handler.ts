@@ -115,6 +115,8 @@ export async function handleInboundMessage(
           classificationSource: "model",
           classificationReason: agentResult.classificationReason,
           assignedToId: null,
+          campaignId: null,
+          bookingStatus: "enquiry",
           extractedFields: agentResult.extractedFields,
           messages: updatedMessages,
           startedAt: session.messages.length === 0 ? now : session.lastActivityAt,

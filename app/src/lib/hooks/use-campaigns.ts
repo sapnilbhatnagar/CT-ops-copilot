@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  DEFAULT_CRITERIA,
   makeCriterionKey,
+  emptyCampaign,
   type Campaign,
   type QualifyingCriterion,
 } from "@/lib/types";
@@ -15,11 +15,7 @@ export type CampaignsState = { campaigns: Campaign[]; activeId: string };
 // ── Pure reducers (unit-tested) ────────────────────────────────────────────
 
 export function seedState(): CampaignsState {
-  const campaign: Campaign = {
-    id: "campaign_default",
-    name: "Default campaign",
-    criteria: [...DEFAULT_CRITERIA],
-  };
+  const campaign: Campaign = { ...emptyCampaign("Default campaign"), id: "campaign_default" };
   return { campaigns: [campaign], activeId: campaign.id };
 }
 
@@ -44,7 +40,7 @@ export function removeCriterion(campaigns: Campaign[], campaignId: string, key: 
 
 export function addCampaign(campaigns: Campaign[], name: string): { campaigns: Campaign[]; id: string } {
   const id = `campaign_${Date.now()}`;
-  const campaign: Campaign = { id, name: name.trim() || "Untitled campaign", criteria: [...DEFAULT_CRITERIA] };
+  const campaign: Campaign = { ...emptyCampaign(name.trim() || "Untitled campaign"), id };
   return { campaigns: [...campaigns, campaign], id };
 }
 
